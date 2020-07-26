@@ -56,6 +56,76 @@ Resources:
                 - "dynamodb:Scan"
                 Resource: !GetAtt ExampleTable.Arn
 
+  ExampleApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: stage
+      Cors: "'*'"
+      DefinitionBody: 
+        swagger: "2.0"
+        info:
+          version: "1.0"
+          title: "dynamodb-sam-test"
+        basePath: "stage"
+        schemes:
+        - "https"
+        paths:
+          /hello:
+            get:
+              responses: {}
+              x-amazon-apigateway-integration:
+                uri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HelloWorldFunction.Arn}/invocations"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                type: "aws_proxy"
+          /items:
+            get:
+              consumes:
+              - "application/json"
+              produces:
+              - "application/json"
+              responses:
+                '200':
+                  description: "200 response"
+              x-amazon-apigateway-integration:
+                credentials: !GetAtt APIDatabaseRole.Arn
+                uri: "arn:aws:apigateway:us-east-1:dynamodb:action/Scan"
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseTemplates:
+                      application/json: "#set($inputRoot=$input.path('$'))\n[\n    #foreach($elem\
+                        \ in $inputRoot.Items){\n        \"userId\":\"$elem.userId.S\",\n\
+                        \        \"date\":\"$elem.date.S\"\n    }\n        #if($foreach.hasNext),\n\
+                        \        #end\n    #end\n]"
+                requestTemplates:
+                  application/json: !Sub "{\n    \"TableName\": \"${ExampleTable}\" \n}"
+                passthroughBehavior: "when_no_templates"
+                httpMethod: "POST"
+                type: "aws"
+            post:
+              consumes:
+              - "application/json"
+              produces:
+              - "application/json"
+              responses:
+                '200':
+                  description: "200 response"
+              x-amazon-apigateway-integration:
+                credentials: !GetAtt APIDatabaseRole.Arn
+                uri: "arn:aws:apigateway:us-east-1:dynamodb:action/PutItem"
+                responses:
+                  default:
+                    statusCode: "200"
+                requestTemplates:
+                  application/json: !Sub "{\n    \"TableName\": \"${ExampleTable}\"\
+                  ,\n    \"Item\": {\n        \"userId\": {\n            \"S\": \"$input.path('$.userId')\"\
+                  \n        },\n        \"date\": {\n            \"S\": \"$input.path('$.date')\"\
+                  \n        }\n    }\n    \n\n}"
+                passthroughBehavior: "when_no_templates"
+                httpMethod: "POST"
+                type: "aws"
+
   HelloWorldFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -67,15 +137,21 @@ Resources:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
             Path: /hello
-            Method: get    
+            Method: post
+            RestApiId: !Ref ExampleApi
+
+  IdentityFunctionLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt HelloWorldFunction.Arn 
+      Principal: apigateway.amazonaws.com                 
+
 
 Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
   HelloWorldApi:
     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+    Value: !Sub "https://${ExampleApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
   HelloWorldFunction:
     Description: "Hello World Lambda Function ARN"
     Value: !GetAtt HelloWorldFunction.Arn
