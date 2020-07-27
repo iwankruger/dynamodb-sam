@@ -9,6 +9,15 @@ Description: >
 Globals:
   Function:
     Timeout: 3
+  # add the following to fix a default Stage from being created  
+  # see post https://github.com/awslabs/serverless-application-model/issues/191#issuecomment-580412747
+  Api:
+    OpenApiVersion: 3.0.1  
+
+Parameters:
+  AppStage:
+    Type: String
+    Default: stage    
 
 Resources:
   
@@ -59,14 +68,14 @@ Resources:
   ExampleApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: stage
+      StageName: !Ref AppStage
       Cors: "'*'"
       DefinitionBody: 
         swagger: "2.0"
         info:
           version: "1.0"
           title: "dynamodb-sam-test"
-        basePath: "stage"
+        basePath: !Ref AppStage
         schemes:
         - "https"
         paths:
@@ -151,7 +160,7 @@ Resources:
 Outputs:
   HelloWorldApi:
     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ExampleApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+    Value: !Sub "https://${ExampleApi}.execute-api.${AWS::Region}.amazonaws.com/${AppStage}/hello/"
   HelloWorldFunction:
     Description: "Hello World Lambda Function ARN"
     Value: !GetAtt HelloWorldFunction.Arn
